@@ -19,7 +19,7 @@ describe('getInstance', () => {
     const newVector = createInstance(factories, instances)(container, 'vector');
 
     expect(newVector).toEqual({ x: 1, y: 2 });
-    expect(instances.get('vector')).toBe(newVector);
+    expect(instances.get('vector')).toBeUndefined();
     expect(factories.vector).toHaveBeenCalledWith(container);
   });
 

@@ -1,6 +1,4 @@
-import diContainer, {
-  factoriesFrom, isReady, prepareAll, releaseAll,
-} from './di-container';
+import diContainer, { factoriesFrom, prepareAll } from './di-container';
 import { expectStrictType } from './utils/type-test-utils';
 import { assignProps } from './utils/assign-props';
 import allNames from './utils/all-names';
@@ -166,25 +164,6 @@ describe('diContainer', () => {
     ).toThrow();
   });
 
-  it('allows to unbind name from it\'s value', () => {
-    type Container = {
-      x: { value: number },
-      y: number,
-      z: number,
-    };
-
-    const container = diContainer<Container>({
-      x: () => ({ value: 42 }),
-      y: ({ x }) => x.value * 2,
-      z: ({ x, y }) => x.value + y,
-    });
-
-    const prevValueX = container.x;
-    container.x = null;
-
-    expect(container.x).toEqual({ value: 42 });
-    expect(container.x).not.toBe(prevValueX);
-  });
   it('allows to get ownPropertyDescriptor', () => {
     type Container = {
       x: number,
@@ -267,11 +246,14 @@ describe('diContainer', () => {
 
     const createNode = (): Node => ({ child: null, parent: null });
 
+    const pNode = createNode(); // singleton emulation
+    const cNode = createNode(); // singleton emulation
+
     const container = diContainer<Container>({
-      parentItem: [createNode, (self, { childItem }) => {
+      parentItem: [() => pNode, (self, { childItem }) => {
         self.child = childItem;
       }],
-      childItem: [createNode, (self, { parentItem }) => {
+      childItem: [() => cNode, (self, { parentItem }) => {
         self.parent = parentItem;
       }],
     });
@@ -299,11 +281,14 @@ describe('diContainer', () => {
 
     const createNode = (): Node => ({ name: '', child: null, parent: null });
 
+    const pNode = createNode(); // singleton emulation
+    const cNode = createNode(); // singleton emulation
+
     const container = diContainer<Container>({
       childName: () => 'The Child',
       parentName: () => 'The Parent',
-      parentItem: [createNode, assignProps({ child: 'childItem', name: 'parentName' })],
-      childItem: [createNode, assignProps({ parent: 'parentItem', name: 'childName' })],
+      parentItem: [() => pNode, assignProps({ child: 'childItem', name: 'parentName' })],
+      childItem: [() => cNode, assignProps({ parent: 'parentItem', name: 'childName' })],
     });
 
     const child = container.childItem;
@@ -386,50 +371,6 @@ describe('diContainer', () => {
   });
 });
 
-describe('isReady', () => {
-  it('allows to identify if some component is ready', () => {
-    type Container = {
-      x: { value: number },
-      y: number,
-      z: number,
-    };
-
-    const container = diContainer<Container>({
-      x: () => ({ value: 42 }),
-      y: ({ x }) => x.value * 2,
-      z: ({ x, y }) => x.value + y,
-    });
-
-    expect(isReady(container, 'x')).toBeFalsy();
-
-    expect(container.x).toEqual({ value: 42 });
-
-    expect(isReady(container, 'x')).toBeTruthy();
-  });
-
-  it('allows to identify if some component is not ready', () => {
-    type Container = {
-      x: { value: number },
-      y: number,
-      z: number,
-    };
-
-    const container = diContainer<Container>({
-      x: () => ({ value: 42 }),
-      y: ({ x }) => x.value * 2,
-      z: ({ x, y }) => x.value + y,
-    });
-
-    expect(container.x).toEqual({ value: 42 });
-
-    expect(isReady(container, 'x')).toBeTruthy();
-
-    container.x = null;
-
-    expect(isReady(container, 'x')).toBeFalsy();
-  });
-});
-
 describe('prepareAll', () => {
   it('allows to create all items in the container', () => {
     type Container = {
@@ -444,15 +385,9 @@ describe('prepareAll', () => {
       z: () => 3,
     });
 
-    expect(isReady(container, 'x')).toBeFalsy();
-    expect(isReady(container, 'y')).toBeFalsy();
-    expect(isReady(container, 'z')).toBeFalsy();
+    const items = prepareAll(container);
 
-    prepareAll(container);
-
-    expect(isReady(container, 'x')).toBeTruthy();
-    expect(isReady(container, 'y')).toBeTruthy();
-    expect(isReady(container, 'z')).toBeTruthy();
+    expect(items).toEqual({ x: 1, y: 2, z: 3 });
   });
 
   it('creates the same as spread operator if container doesn\'t have non-enumerable props', () => {
@@ -486,39 +421,11 @@ describe('prepareAll', () => {
       z: { value: () => 3, enumerable: false },
     }));
 
-    prepareAll(container);
+    const items = prepareAll(container);
 
-    expect(isReady(container, 'x')).toBeTruthy();
-    expect(isReady(container, 'y')).toBeTruthy();
-    expect(isReady(container, 'z')).toBeTruthy();
-  });
-});
-
-describe('releaseAll', () => {
-  it('allows to release all items in the container', () => {
-    type Container = {
-      x: number,
-      y: number,
-      z: number,
-    };
-
-    const container = diContainer<Container>({
-      x: () => 1,
-      y: () => 2,
-      z: () => 3,
-    });
-
-    prepareAll(container);
-
-    expect(isReady(container, 'x')).toBeTruthy();
-    expect(isReady(container, 'y')).toBeTruthy();
-    expect(isReady(container, 'z')).toBeTruthy();
-
-    releaseAll(container);
-
-    expect(isReady(container, 'x')).toBeFalsy();
-    expect(isReady(container, 'y')).toBeFalsy();
-    expect(isReady(container, 'z')).toBeFalsy();
+    expect(items.x).toBe(1);
+    expect(items.y).toBe(2);
+    expect(items.z).toBe(3);
   });
 });
 
@@ -550,14 +457,17 @@ describe('factoriesFrom', () => {
       y: string,
     };
 
-    const container = diContainer<IContainer>({
-      x: () => 42,
-      y: ({ x }) => `the x is ${x}`,
-    });
+    const factories: IFactories<IContainer> = {
+      x: jest.fn(() => 42),
+      y: jest.fn(({ x }) => `the x is ${x}`),
+    };
+
+    const container = diContainer(factories);
 
     factoriesFrom(container);
-    expect(isReady(container, 'x')).toBeFalsy();
-    expect(isReady(container, 'y')).toBeFalsy();
+
+    expect(factories.x).not.toBeCalled();
+    expect(factories.y).not.toBeCalled();
   });
 
   it('creates a factories object from container (with symbolic names)', () => {
@@ -574,15 +484,15 @@ describe('factoriesFrom', () => {
 
     const container = diContainer(originalFactories);
 
-    const factories = factoriesFrom(container);
+    const newFactories = factoriesFrom(container);
 
-    expect(allNames(factories)).toEqual(['x', $field]);
+    expect(allNames(newFactories)).toEqual(['x', $field]);
 
-    expect(factories.x).toBeInstanceOf(Function);
-    expect(factories[$field]).toBeInstanceOf(Function);
+    expect(newFactories.x).toBeInstanceOf(Function);
+    expect(newFactories[$field]).toBeInstanceOf(Function);
 
-    expect(factories.x()).toBe(container.x);
-    expect(factories[$field]()).toBe(container[$field]);
+    expect(newFactories.x()).toBe(container.x);
+    expect(newFactories[$field]()).toEqual(container[$field]);
   });
 
   it('allows to merge two containers', () => {
@@ -653,7 +563,7 @@ describe('factoriesFrom', () => {
     }>(container);
 
     expect(container.x).toBe(container1.x);
-    expect(container[$field]).toBe(container1[$field]);
+    expect(container[$field]).toEqual(container1[$field]);
     expect(container[$field]).toEqual({});
     expect(container.z).toBe(container2.z);
     expect(container.t).toBe(container2.t);

@@ -3,10 +3,12 @@ import { IFactories, VoidFn } from './types';
 
 const call = (fn: VoidFn) => fn();
 
+const $INIT = Symbol('$INIT');
+
 const createInstanceFactory = <C extends object>(
   factories: IFactories<C>,
-  instances: Map<keyof C, any>,
-  stack = UniqueStack<keyof C>(),
+  instances = new Map<keyof C, any>(),
+  stack = UniqueStack<keyof C | typeof $INIT>(),
   initializers: VoidFn[] = [],
 ) => <N extends keyof C>(container: C, name: N): C[N] => {
   if (instances.has(name)) return instances.get(name);
@@ -37,8 +39,11 @@ const createInstanceFactory = <C extends object>(
   }
 
   if (stack.size === 0) {
+    stack.push($INIT);
     initializers.forEach(call);
     initializers = [];
+    instances.clear();
+    stack.pop($INIT);
   }
 
   return instance;
